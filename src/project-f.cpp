@@ -4,70 +4,52 @@
 #include <opencv2/highgui.hpp>  // OpenCV window I/O
 #include <opencv2/features2d.hpp>
 #include <opencv2/objdetect.hpp>
-#include "video-analysis/face-detect.cpp"
+#include <iostream>
+#include "video-analysis/face.hpp"
 
 using namespace std;
 using namespace cv;
 
 const string WindowName = "Face Detection example";
 
-int face_detect(String videoAddress) {
-    namedWindow(WindowName);
+int faceRegWithDnn() {
+    shared_ptr<pf::FaceRecognizer> faceRecoginzer = make_shared<pf::FaceRecognizer>("./data/face_recognition_sface_2021dec.onnx", 
+                                                                                    "./data/face_detection_yunet_2021dec.onnx");
 
-    VideoCapture VideoStream(videoAddress);
-
+    VideoCapture VideoStream(0);
     if (!VideoStream.isOpened())
     {
         printf("Error: Cannot open video stream from camera\n");
         return 1;
     }
 
-    std::string cascadeFrontalfilename = samples::findFile("./data/lbpcascade_frontalface.xml");
-    cv::Ptr<cv::CascadeClassifier> cascade = makePtr<cv::CascadeClassifier>(cascadeFrontalfilename);
-    cv::Ptr<DetectionBasedTracker::IDetector> MainDetector = makePtr<CascadeDetectorAdapter>(cascade);
-    if ( cascade->empty() )
-    {
-      printf("Error: Cannot load %s\n", cascadeFrontalfilename.c_str());
-      return 2;
-    }
-
-    cascade = makePtr<cv::CascadeClassifier>(cascadeFrontalfilename);
-    cv::Ptr<DetectionBasedTracker::IDetector> TrackingDetector = makePtr<CascadeDetectorAdapter>(cascade);
-    if ( cascade->empty() )
-    {
-      printf("Error: Cannot load %s\n", cascadeFrontalfilename.c_str());
-      return 2;
-    }
-
-    DetectionBasedTracker::Parameters params;
-    DetectionBasedTracker Detector(MainDetector, TrackingDetector, params);
-
-    if (!Detector.run())
-    {
-        printf("Error: Detector initialization failed\n");
-        return 2;
-    }
-
-    Mat ReferenceFrame;
-    Mat GrayFrame;
-    vector<Rect> Faces;
-
+    Mat referenceFrame;
     do
     {
-        VideoStream >> ReferenceFrame;
-        cvtColor(ReferenceFrame, GrayFrame, COLOR_BGR2GRAY);
-        Detector.process(GrayFrame);
-        Detector.getObjects(Faces);
+        VideoStream >> referenceFrame;
+        faceRecoginzer->setDetectorSize(referenceFrame.cols, referenceFrame.rows);
+        auto faces = faceRecoginzer->detect(referenceFrame);
 
-        for (size_t i = 0; i < Faces.size(); i++)
+        for (size_t i = 0; i < faces.rows; i++)
         {
-            rectangle(ReferenceFrame, Faces[i], Scalar(0,255,0));
-        }
+            int x = (int) faces.row(i).at<float>(0,0);
+            int y = (int) faces.row(i).at<float>(0,1);
 
-        imshow(WindowName, ReferenceFrame);
+            int width = (int) faces.row(i).at<float>(0,2);
+            int height = (int) faces.row(i).at<float>(0,3);
+
+            float score = faces.row(i).at<float>(0,14);
+
+            Rect face(x, y, width, height);
+            rectangle(referenceFrame, face, Scalar(0,255,0));
+            putText(referenceFrame, to_string(score), Point(x+width, y), FONT_HERSHEY_COMPLEX_SMALL, 0.8, Scalar(200,200,250));
+            cout << x << "," << y << "," << width << "," << height << endl;
+        }
+        
+        imshow(WindowName, referenceFrame);
+        
     } while (waitKey(30) < 0);
 
-    Detector.stop();
     return 0;
 }
 
@@ -80,5 +62,6 @@ void showImageTest(String filename) {
 
 int main()
 {
-    return face_detect("rtsp://ssss:554");
+    faceRegWithDnn();
+    return 0;
 }
